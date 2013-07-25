@@ -1,0 +1,136 @@
+#ifndef config_h
+#define config_h
+
+float value_long, value_short, temp_long, temp_short;
+int time, milliseconds;
+
+//double angle; //angles180 = straight  0<angle<180 = left 180<angle<360 = right
+
+//float displacement = 0; //turning displacement
+//float distanceL = 0;
+int command=0;
+
+////////////////////////////Encoder//////////////////
+int counterL = 0, counterR = 0;   //store the value from encoder, 304 per rotation
+double angle;                     //Possitive = turn left, negative = turn right
+double x_axis = 0, y_axis = 0;    //x, y postion 2438 mm max 
+
+float displacement = 0; //turning displacement
+float distanceL = 0;
+float distanceR = 0; //in mm
+
+
+////////////////////////////light senson//////////////////
+int light_sensor1 = 0, light_sensor2 = 0;
+int ini_light_sensor1 = 0, ini_light_sensor2 = 0;
+
+
+//////////////////////////Wireless Communication//////////////
+int orderReceived = 0;
+//recevie message
+//int Directions = 0; //0=forward,1=Backward, 2=left, 3=right
+//int move = 0; //0=stop, 1=move
+int turnTr = 0; // 0 = not move, 1 = left, 3 = right
+int Attact = 0; //0=not attact, 1 = attact
+int Manual = 0; //0 = manual, 1 = auto
+//Send Message
+int Mycar_x = 1222; //max 16 bit
+int Mycar_y = 1700; //max 16 bit
+int Enemy_x = 1222;
+int Enemy_y = 406;
+int Distance = 1294;  //max 16 bit
+int TrAng = 0;  //max 16 bit
+int AttCount = 10;  //max 16 bit
+int OtherInfo = 0; //max 8 bit, [Light Sensor 1|LS2|LS3|LS4|Too Close|0|0|0]
+int IR_L = 0;
+int IR_S = 0;
+int Distance_L = 0;
+int Distance_S = 0;
+
+
+
+
+/* HENRY: the below sets up timer5 to be used to time subroutines to determine
+ * their strain on the CPU
+ */
+
+void setup_timer5()
+{
+  TCCR5A = _BV(COM5A1) | _BV(COM5B1) | _BV(COM5C1);
+  TCCR5B = _BV(CS51) | _BV(CS50) |_BV(WGM52);
+
+  OCR5A = 125*2;
+
+  TIMSK5 = _BV(OCIE5A);
+  TIFR5 = _BV(OCF5A);
+}
+
+/* HENRY: some things to know about timer 2:
+ * 1. OCR2A corresponds to pin 10 (pwm)
+ * 2. OCR2B corresponds to pin 9 (pwm)
+ * 3. PWM Phase Correct Mode runs the timer up and down from 0 to 255 and
+ * based on COM2x1:0 will either be high until OCR2x and then low or vice
+ * versa
+ */  
+void setup_timer2_for_pwm ()
+{
+  // HENRY: keep pin 9 turned off for now
+  // TCCR2A = _BV(COM2B1)
+
+  TCCR2A = _BV(COM2A1) | _BV(WGM20);
+  TCCR2B = _BV(CS22) | _BV(CS21);
+  
+  TCCR2A = _BV(COM2A1) | _BV(COM2B1) | _BV(COM2B0) | _BV(WGM20);
+  TCCR2B = _BV(CS22) | _BV(CS21);
+}
+
+/***********************************ISR***************************************/
+void encoderStateL(){
+	counterL++;//test
+	if(digitalRead(2) == digitalRead(3)){
+		distanceL = distanceL + 0.462;
+		if(angle>0){
+			x_axis = x_axis - 0.462*cos((90 - angle)*3.1415/180);
+			y_axis = y_axis + 0.462*sin((90 - angle)*3.1415/180);
+		}
+		if(angle<= 0){
+			x_axis = x_axis + 0.462*cos((90 + angle)*3.1415/180);
+			y_axis = y_axis + 0.462*sin((90 + angle)*3.1415/180);
+		}
+	}
+	else {
+		distanceL = distanceL - 0.462;
+		if(angle>0){
+			x_axis = x_axis - 0.462*cos((90 - angle )*3.1415/180);
+			y_axis = y_axis - 0.462*sin((90 - angle )*3.1415/180);
+		}
+		if(angle <= 0){
+			x_axis = x_axis + 0.462*cos((90 + angle)*3.1415/180);
+			y_axis = y_axis - 0.462*sin((90 + angle)*3.1415/180);
+		}
+	}
+
+
+	if(distanceL = distanceR){ //singalling turn Right 
+		displacement = distanceL - distanceR;
+		angle =  (-1*displacement/(2*538.6256)*360);//circumference = 538.6256mm
+	}
+
+}
+
+
+void encoderStateR(){
+
+  if(digitalRead(20) == digitalRead(21))
+    distanceR = distanceR + 0.462;
+  else
+    distanceR = distanceR - 0.462;
+
+  if(distanceR >= distanceL){ //turn Left singalling
+    displacement = distanceR - distanceL;
+    angle = displacement / (2 * 538.6256) * 360; //circumference = 538.6256mm
+  }
+}
+
+
+#endif

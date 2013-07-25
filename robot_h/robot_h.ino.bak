@@ -1,0 +1,582 @@
+#include "D:\Dropbox\Porcessing folder\Final Arduino\config_h\config_h.ino"
+#include "D:\arduino-1.0\hardware\arduino\cores\arduino\Arduino.h"
+
+float short_range_ir_table[18][3] =
+{
+  {  3.25,  3.00,  -0.50  },
+  {  3.00,  3.50,  -0.56  },
+  {  2.72,  4.00,  -0.37  },
+  {  2.35,  5.00,  -0.35  },
+  {  2.00,  6.00,  -0.25  },
+  {  1.75,  7.00,  -0.17  },
+  {  1.58,  8.00,  -0.18  },
+  {  1.40,  9.00,  -0.15  },
+  {  1.25,  10.0,  -0.10  },
+  {  1.05,  12.0,  -0.065 },
+  {  0.92,  14.0,  -0.06  },
+  {  0.80,  16.0,  -0.04  },
+  {  0.72,  18.0,  -0.02  },
+  {  0.68,  20.0,  -0.036 },
+  {  0.50,  25.0,  -0.02  },
+  {  0.40,  30.0,  -0.004 },
+  {  0.38,  35.0,  -0.016 },
+  {  0.30,  40.0,  0      }
+};
+
+float long_range_ir_table[15][3] =
+{
+  {  2.75,  15.00,  -0.048   },
+  {  2.51,  20.00,  -0.054   },
+  {  1.97,  30.00,  -0.044   },
+  {  1.53,  40.00,  -0.028   },
+  {  1.25,  50.00,  -0.020   },
+  {  1.05,  60.00,  -0.015   },
+  {  0.90,  70.00,  -0.010   },
+  {  0.80,  80.00,  -0.008   },
+  {  0.72,  90.00,  -0.007   },
+  {  0.65,  100.00,  -0.007  },
+  {  0.58,  110.00,  -0.004  },
+  {  0.54,  120.00,  -0.004  },
+  {  0.50,  130.00,  -0.003  },
+  {  0.47,  140.00,  -0.002  },
+  {  0.45,  150.00,  0       }
+};
+
+//Anolog
+#define PIN_FAR_IR                  3 
+#define PIN_CLOSE_IR                4
+#define PIN_LIGHT_SENSOR_1          10
+#define PIN_LIGHT_SENSOR_2          11
+
+//digital
+#define PIN_TURRET                  9
+#define PIN_WEAPON                  11
+/*
+#define PIN_LIGHT_SENSOR_2          12
+#define PIN_LIGHT_SENSOR_3          13
+#define PIN_LIGHT_SENSOR_4          14
+*/
+#define PIN_ENCODER_OUT_LEFT_0      2
+#define PIN_ENCODER_OUT_LEFT_1      3
+#define PIN_ENCODER_OUT_RIGHT_0     21
+#define PIN_ENCODER_OUT_RIGHT_1     20
+
+
+#define PIN_ENABLE_LEFT_MOTOR       13
+#define PIN_ENABLE_RIGHT_MOTOR      12
+#define PIN_TTL_LEFT_0              7
+#define PIN_TTL_LEFT_1              6
+#define PIN_TTL_RIGHT_0             5
+#define PIN_TTL_RIGHT_1             4
+
+/*
+int encoderL_1 = 7, encoderL_2 = 6;
+int encoderR_1 = 5, encoderR_2 = 4;
+*/
+
+#define move_forward 1
+#define move_reverse 2
+#define move_stop 3
+#define move_rotateRight 4
+#define move_rotateLeft 5
+
+
+/////////////////////////////distance/////////////////////////
+//Distance,  CC   C    M    F    FF    FFF
+// cm,       5,   10,  20   50   100   150
+#define Distance_CC  5
+#define Distance_C  10;
+#define Distance_M  20;
+#define Distance_F  50;
+#define Distance_FF  100;
+#define Distance_FFF  150;
+
+/*
+-------------------------------CLASS DECLARATION--------------------------------
+*/
+
+class Robot
+{
+  public:
+    Robot();
+    void  access_weapon(int control);
+    void  access_turret(int deg);
+    float access_close_range_IR_sensor(float voltage);
+    float access_long_range_IR_sensor(float voltage);
+    char* read_buffer();
+    int   sweep_search();
+    int   access_light_sensor(int pin);
+    void  access_motor(int control, int value);
+};
+
+/*
+-------------------------------CLASS DEFINITIONS--------------------------------
+*/
+
+// HENRY: our constructor function to set everything up
+Robot::Robot()
+{
+  int i;
+  //if (DEBUG) Serial.println("running Robot constructor");
+  pinMode(PIN_WEAPON, OUTPUT);
+  // pinMode(PIN_CLOSE_IR, INPUT);
+  // pinMode(PIN_FAR_IR, INPUT);
+  pinMode(PIN_TURRET, OUTPUT);
+  pinMode(10, OUTPUT);
+
+  // HENRY: these are Kev's pins.
+  pinMode(PIN_ENABLE_LEFT_MOTOR, OUTPUT);
+  pinMode(PIN_ENABLE_RIGHT_MOTOR, OUTPUT);
+  pinMode(PIN_TTL_LEFT_0, OUTPUT);
+  pinMode(PIN_TTL_LEFT_1, OUTPUT);
+  pinMode(PIN_TTL_RIGHT_0, OUTPUT);
+  pinMode(PIN_TTL_RIGHT_1, OUTPUT);
+
+  // HENRY: this may or may not be necessary
+
+  pinMode(PIN_ENCODER_OUT_LEFT_0, INPUT);
+  pinMode(PIN_ENCODER_OUT_LEFT_1, INPUT);
+  pinMode(PIN_ENCODER_OUT_RIGHT_0, INPUT);
+  pinMode(PIN_ENCODER_OUT_RIGHT_1, INPUT);
+
+
+
+  attachInterrupt(0, encoderStateL, CHANGE); //pin2
+  attachInterrupt(2, encoderStateR, CHANGE); //pin21
+}
+
+float access_close_range_IR_sensor(float voltage)
+{
+  /* HENRY: the voltage of the analog input goes from 0 to 1023
+   */
+
+  int i;
+  float first, second, slope, value;
+  
+  voltage = (voltage * 5) / 1023;
+
+  for (i = 0; i < 17; i++)
+  {
+    first = short_range_ir_table[i][0];
+    second = short_range_ir_table[i+1][0];
+
+    if (voltage <= first && voltage >= second)
+    {
+      slope = short_range_ir_table[i][2];
+      value = (first - voltage) +
+              (-1)*slope*short_range_ir_table[i][1];
+      value /= (-1)*slope;
+
+    }
+  }
+  
+  
+  return value;
+  
+}
+
+float access_long_range_IR_sensor(float voltage)
+{
+  /* HENRY: the voltage of the analog input goes from 0 to 1023
+   */
+
+  int i;
+  float first, second, slope, value;
+  
+  voltage = (voltage * 5) / 1023;
+    
+  /*
+  start_time = milliseconds;
+  Serial.println("The start time is : ");
+  Serial.print(start_time);
+  Serial.println("\n");
+  */
+  
+  for (i = 0; i < 17; i++)
+  {
+    first = long_range_ir_table[i][0];
+    second = long_range_ir_table[i+1][0];
+
+    if (voltage <= first && voltage >= second)
+    {
+      slope = long_range_ir_table[i][2];
+      value = (first - voltage) +
+              (-1)*slope*long_range_ir_table[i][1];
+      value /= (-1)*slope;
+    }
+  }
+
+  return value;
+  /*
+  end_time = milliseconds;
+  Serial.println("The end time is : ");
+  Serial.print(end_time);
+  Serial.println("\n");
+  */
+    
+}
+
+void Robot::access_turret(int deg)
+{
+  // HENRY: Assuming that the distribution is relatively linear and our full
+  // range of motion is 180 degrees...
+  OCR2A = (deg * 70 / 180);
+  // Serial.println(deg*70/180);
+
+  OCR2B = 0;
+}
+
+int Robot::sweep_search()
+{
+  int i, sector;
+  
+  OCR2B = 255 - 1;
+  
+  delay(725);
+  
+  value_long = 0;
+  value_short = 0;
+  time = 0;
+  
+  OCR2B = 255 - 70;
+  milliseconds = 0;
+
+  delay(725);
+
+  if (time > 0 && time < 314)
+    sector = 1;
+  else if (time > 314 && time < 600)
+    sector = 2;
+  else if (time > 600 && time < 900)
+    sector = 3;
+  else if (time > 900 && time < 1200)
+    sector = 4;
+  else if (time > 1200)
+    sector = 5;
+  
+  return sector;        
+}
+
+int Robot::access_light_sensor(int pin)
+{
+  int input;
+  input = analogRead(pin);
+  //if (DEBUG) Serial.print("The current value of the light sensor is ");
+  //if (DEBUG) Serial.print(input);
+  //if (DEBUG) Serial.print(" we're in the ");
+  if (input > 400)
+  {
+   // if (DEBUG) Serial.println("black");
+    return 1;
+  }
+  else
+  {
+   // if (DEBUG) Serial.println("white");
+    return 0;
+  }
+}
+
+void Robot::access_motor(int control, int value)
+{
+  //Determine which instruction
+    if(control == move_forward)
+    {
+      analogWrite(PIN_TTL_LEFT_0, value);
+      analogWrite(PIN_TTL_LEFT_1, 0);
+      analogWrite(PIN_TTL_RIGHT_0, value);
+      analogWrite(PIN_TTL_RIGHT_1, 0);
+    }
+    else if(control == move_reverse)
+    {
+      analogWrite(PIN_TTL_LEFT_0, 0);
+      analogWrite(PIN_TTL_LEFT_1, value);
+      analogWrite(PIN_TTL_RIGHT_0, 0);
+      analogWrite(PIN_TTL_RIGHT_1, value);
+    }
+    else if(control == move_stop)
+    {
+      analogWrite(PIN_TTL_LEFT_0, 0);
+      analogWrite(PIN_TTL_LEFT_1, 0);
+      analogWrite(PIN_TTL_RIGHT_0, 0);
+      analogWrite(PIN_TTL_RIGHT_1, 0);
+    }
+    else if(control == move_rotateRight)
+    {
+      analogWrite(PIN_TTL_LEFT_0, 0);
+      analogWrite(PIN_TTL_LEFT_1, value);
+      analogWrite(PIN_TTL_RIGHT_0, value);
+      analogWrite(PIN_TTL_RIGHT_1, 0);
+    }
+    else if(control == move_rotateLeft)
+    {
+      analogWrite(PIN_TTL_LEFT_0, value);
+      analogWrite(PIN_TTL_LEFT_1, 0);
+      analogWrite(PIN_TTL_RIGHT_0, 0);
+      analogWrite(PIN_TTL_RIGHT_1, value);
+    }
+}
+
+void Robot::access_weapon(int control)
+{
+  digitalWrite(PIN_WEAPON, control);    
+}
+
+
+
+/****************************************Wireless Comm************************************************/
+
+byte intTObyte_100 (int k)
+{
+  return (byte) (k/100); 
+}
+
+byte intTObyte_1 (int k)
+{
+  return (byte) (k%100);
+}
+
+int byteTOint ( byte x, byte y )
+{
+   return ( (int)x *100 + (int)y );
+}
+void sendMessage()
+{
+     
+      byte temp1 = 0xFF;
+      byte temp2 = 0xFF;
+      Serial.write(temp1);//1
+      
+      temp1 = 0xF0;
+      temp2 = temp1^temp2;
+      Serial.write(temp1);//2
+      
+      temp1 = intTObyte_100(Mycar_x);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//3
+      
+      temp1 = intTObyte_1(Mycar_x);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//4
+      
+      temp1 = intTObyte_100(Mycar_y);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//5
+      
+      temp1 = intTObyte_1(Mycar_y);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//6
+      
+      temp1 = intTObyte_100(Enemy_x);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//7
+      
+      temp1 = intTObyte_1(Enemy_x);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//8
+
+      temp1 = intTObyte_100(Enemy_y);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//9
+      
+      temp1 = intTObyte_1(Enemy_y);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//10
+      
+      
+      
+      temp1 = intTObyte_100(Distance);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//11
+      
+      temp1 = intTObyte_1(Distance);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//12
+      
+      temp1 = intTObyte_100(TrAng);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//13
+      
+      temp1 = intTObyte_1(TrAng);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//14
+      
+      temp1 = intTObyte_100(AttCount);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//15
+      
+      temp1 = intTObyte_1(AttCount);
+      temp2 = temp1 ^ temp2;
+      Serial.write(temp1);//16
+      
+      Serial.write(temp2); //17
+      //Serial.println();
+      //Serial.println("here2");
+}
+void receiveMessage()
+{
+  //Robot XXX;
+ 	int i;
+	int serial_input_buffer[3];
+    //int serial_output_buffer[3];
+    //int input;
+    int temp = -1;
+ 
+  if(Serial.available())
+  {
+    for (i = 0; i < 4;  )	
+    {
+	temp = Serial.read();
+	if (temp >= 0)	
+	{
+            serial_input_buffer[i] = temp;
+	    i++;
+	}
+    }
+//    Serial.println(" ");
+    if (serial_input_buffer[3] == (serial_input_buffer[0] ^ serial_input_buffer[1] ^ serial_input_buffer[2]))
+    {
+	for (i = 0; i < 4; i++ )
+	{
+	  if (serial_input_buffer[i] == 0xf0) 
+	  {
+	    if (i > 0 )  orderReceived = serial_input_buffer[i-1];
+	    else orderReceived = serial_input_buffer[3];
+            
+	  }
+	}
+    //Serial.println(orderReceived);
+    
+    }
+    else
+    {
+      orderReceived = 0;
+    } 
+  }
+}
+
+void LoadVariables()
+{
+  //Serial.println(orderReceived);
+ 	if(orderReceived & 0x80 )	command = move_forward;
+	else if (orderReceived & 0x40)	command = move_reverse;
+	else if (orderReceived & 0x20)		command = move_rotateRight;
+	else if (orderReceived & 0x10)		command = move_rotateLeft;
+	else	command = move_stop;
+        //if (command >=0) Serial.println("Direction: " + command);
+
+        if (orderReceived & 0x8)    turnTr = 1; // 0 = not move, 1 = left, 3 = right
+        else if (orderReceived & 0x4)    turnTr = 3;
+        else turnTr = 0;
+
+        //if (command >=0)        Serial.println("Other1: " + command);
+        
+        Attact = (orderReceived & 0x2) >> 1; //0=not attact, 1 = attact
+        Manual = orderReceived & 0x1; //0 = manual, 1 = auto 
+        //if (command >=0)        Serial.println("Other2: " + command);  
+}
+
+/****************************************MOTOR*************************************************/
+/*
+This function controls the motor and return the position of the robot in centimeter
+*/
+void motor(int control, int value)
+{
+	//Determine whihc instruction 
+	if(control == move_forward){
+		double angle_set;
+		analogWrite(PIN_TTL_LEFT_0, value);
+		analogWrite(PIN_TTL_LEFT_1, 0);
+		analogWrite(PIN_TTL_RIGHT_0, value);
+		analogWrite(PIN_TTL_RIGHT_1, 0);
+	}else if(control == move_reverse){
+		analogWrite(PIN_TTL_LEFT_0, 0);
+		analogWrite(PIN_TTL_LEFT_1, value);
+		analogWrite(PIN_TTL_RIGHT_0, 0);
+		analogWrite(PIN_TTL_RIGHT_1, value);
+	}else if(control == move_stop){
+		analogWrite(PIN_TTL_LEFT_0, 0);
+		analogWrite(PIN_TTL_LEFT_1, 0);
+		analogWrite(PIN_TTL_RIGHT_0, 0);
+		analogWrite(PIN_TTL_RIGHT_1, 0);
+	}else if(control == move_rotateRight){
+		analogWrite(PIN_TTL_LEFT_0, 0);
+		analogWrite(PIN_TTL_LEFT_1, value);
+		analogWrite(PIN_TTL_RIGHT_0, value);
+		analogWrite(PIN_TTL_RIGHT_1, 0);
+	}else if(control == move_rotateLeft){
+		analogWrite(PIN_TTL_LEFT_0, value);
+		analogWrite(PIN_TTL_LEFT_1, 0);
+		analogWrite(PIN_TTL_RIGHT_0, 0);
+		analogWrite(PIN_TTL_RIGHT_1, value);
+	}
+
+
+//TEST ONLY: To display the value for checking
+
+	
+	//Serial.write("\n  Left:");
+	//Serial.print(distanceL);
+
+	
+	//Serial.write(" Right:");
+	//Serial.print(distanceR);
+
+	//Serial.write(" Angle ");
+	//Serial.print(angle);
+
+	//Serial.write(" Command: ");
+	//Serial.print(command);
+	
+}
+
+void AllInOneMotor(int speedL, int speedR)
+{
+  if (speedL >= 0)
+  {
+	analogWrite(PIN_TTL_LEFT_0, speedL);
+	analogWrite(PIN_TTL_LEFT_1, 0);
+  } else
+  {
+	analogWrite(PIN_TTL_LEFT_0, 0);
+	analogWrite(PIN_TTL_LEFT_1, -speedL);
+  }
+  if (speedR >= 0)
+  {
+	analogWrite(PIN_TTL_LEFT_0, speedR);
+	analogWrite(PIN_TTL_LEFT_1, 0);
+  } else
+  {
+	analogWrite(PIN_TTL_LEFT_0, 0);
+	analogWrite(PIN_TTL_LEFT_1, -speedR);
+  }
+}
+
+
+/****************************************LIGHT SENSOR*************************************************/
+void light_sensor(){
+	light_sensor1 = analogRead(PIN_LIGHT_SENSOR_1);//LEft
+	light_sensor2 = analogRead(PIN_LIGHT_SENSOR_2);//Right
+	
+	/*Serial.write("\n  // ");
+	Serial.print(light_sensor1);
+	Serial.write("  // ");
+	Serial.print(light_sensor2);
+
+	Serial.write("  // ");
+	Serial.print(ini_light_sensor2);
+	Serial.write("  // ");
+	Serial.print(ini_light_sensor2);*/
+
+	if(light_sensor1 > ini_light_sensor1 + 80){
+		while(angle< 90)
+		motor(move_rotateLeft, 90);
+	}
+	else if(light_sensor2 > ini_light_sensor2 + 80){
+		while(angle< 90)
+		motor(move_rotateRight, 90);
+	}
+	else if(light_sensor2 > ini_light_sensor2 + 80 && light_sensor1 > ini_light_sensor1 + 80){
+		while(angle< 180)
+		motor(move_rotateRight, 90);
+	}
+}
